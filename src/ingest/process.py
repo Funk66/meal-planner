@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
 from langchain_ollama import ChatOllama, OllamaEmbeddings
-from pgvector.psycopg import register_vector
+from pgvector.psycopg import Vector, register_vector
 from psycopg import connect
 from psycopg.types.json import Json
 from pydantic import BaseModel, Field
@@ -350,7 +350,7 @@ def _insert_recipe(conn, recipe: Recipe) -> None:
                 Json([ingredient.model_dump() for ingredient in recipe.ingredients]),
                 Json(recipe.instructions),
                 Json(recipe.tags),
-                recipe.embedding,
+                Vector(recipe.embedding),
             ),
         )
 
