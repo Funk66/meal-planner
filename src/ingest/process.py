@@ -3,11 +3,13 @@ from __future__ import annotations
 import ast
 import json
 import os
+import shutil
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+import kagglehub
 import pandas as pd
 from dotenv import load_dotenv
 from langchain_ollama import ChatOllama, OllamaEmbeddings
@@ -19,6 +21,7 @@ from tqdm import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
+DATASET_ID = "realalexanderwei/food-com-recipes-with-ingredients-and-tags"
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
 DEFAULT_LLM_MODEL = "qwen2.5:7b"
 
@@ -108,6 +111,40 @@ def _find_local_csv() -> Path | None:
         return None
     csv_files = sorted(DATA_DIR.glob("*.csv"))
     return csv_files[0] if csv_files else None
+
+
+def _select_csv(csv_files: list[Path]) -> Path:
+    if not csv_files:
+        raise FileNotFoundError("No CSV files found in downloaded dataset")
+
+    def rank(path: Path) -> tuple[bool, int, str]:
+        name = path.name.lower()
+        return ("recipe" not in name, len(name), name)
+
+    return sorted(csv_files, key=rank)[0]
+
+
+def _download_dataset() -> Path:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    dataset_path = Path(kagglehub.dataset_download(DATASET_ID))
+    csv_files = sorted(dataset_path.rglob("*.csv"))
+    selected = _select_csv(csv_files)
+    destination = DATA_DIR / selected.name
+    if not destination.exists():
+        shutil.copy2(selected, destination)
+    return destination
+
+
+def _ensure_csv(csv_path: Path | None) -> Path:
+    if csv_path is not None:
+        if not csv_path.exists():
+            raise FileNotFoundError(f"CSV not found at {csv_path}")
+        return csv_path
+
+    local = _find_local_csv()
+    if local is not None:
+        return local
+    return _download_dataset()
 
 
 def _parse_list_field(value: object) -> list[str]:
@@ -232,7 +269,7 @@ def _coerce_ingredient(item: dict) -> Ingredient | None:
     search_term = str(item.get("search_term", "")).strip()
     if not search_term:
         return None
-    quantity_raw = item.get("quantity") or 1
+    quantity_raw = item.get("quantity")
     try:
         quantity = float(quantity_raw)
     except TypeError, ValueError:
@@ -368,11 +405,7 @@ def main() -> None:
 
     settings = load_settings()
 
-    csv_path = args.csv_path or _find_local_csv()
-    if csv_path is None or not csv_path.exists():
-        raise FileNotFoundError(
-            "No CSV found. Place a dataset CSV in data/ or pass --csv-path."
-        )
+    csv_path = _ensure_csv(args.csv_path)
 
     limit = 5 if args.dry_run else args.limit
     df = pd.read_csv(csv_path)

@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 meal-planner = "meal_planner.cli:app"
+meal-planner-ingest = "ingest.process:main"
 
 [build-system]
 requires = ["setuptools>=68"]
